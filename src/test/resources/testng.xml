@@ -1,0 +1,156 @@
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
+
+<!--
+    testng.xml — Master test-suite descriptor.
+
+    TestNG reads this file to discover what to run, in what order,
+    and whether groups of tests may execute in parallel.
+
+    Maven Surefire Plugin is configured in pom.xml to point here via:
+        <suiteXmlFile>src/test/resources/testng.xml</suiteXmlFile>
+
+    To run a single sub-suite from the command line:
+        mvn test -Dgroups=crud
+-->
+<suite name="ApiNexus — Complete API Test Suite"
+       verbose="2"
+       thread-count="3"
+       data-provider-thread-count="3">
+
+    <!--
+        ── MOCK SERVER TESTS ────────────────────────────────────────────────
+        Run the mock server tests FIRST so a live WireMock instance is
+        validated before real-network tests start.
+    -->
+    <test name="Mock Server Tests" preserve-order="true">
+        <groups>
+            <run>
+                <include name="mock"/>
+            </run>
+        </groups>
+        <classes>
+            <class name="com.apinexus.tests.mock.MockServerTest"/>
+        </classes>
+    </test>
+
+    <!--
+        ── CRUD TESTS ───────────────────────────────────────────────────────
+        Basic GET / POST / PUT / PATCH / DELETE against JSONPlaceholder.
+    -->
+    <test name="CRUD Operations Tests" preserve-order="true">
+        <groups>
+            <run>
+                <include name="crud"/>
+            </run>
+        </groups>
+        <classes>
+            <class name="com.apinexus.tests.crud.CrudOperationsTest"/>
+        </classes>
+    </test>
+
+    <!--
+        ── AUTHENTICATION TESTS ─────────────────────────────────────────────
+        Bearer token, Basic auth, API-key header, invalid-credential flows.
+    -->
+    <test name="Authentication Tests" preserve-order="true">
+        <groups>
+            <run>
+                <include name="auth"/>
+            </run>
+        </groups>
+        <classes>
+            <class name="com.apinexus.tests.auth.AuthenticationTest"/>
+        </classes>
+    </test>
+
+    <!--
+        ── SCHEMA VALIDATION TESTS ──────────────────────────────────────────
+        JSON Schema validation for response structures.
+    -->
+    <test name="Schema Validation Tests" preserve-order="true">
+        <groups>
+            <run>
+                <include name="schema"/>
+            </run>
+        </groups>
+        <classes>
+            <class name="com.apinexus.tests.schema.SchemaValidationTest"/>
+        </classes>
+    </test>
+
+    <!--
+        ── ERROR HANDLING TESTS ─────────────────────────────────────────────
+        4xx / 5xx status codes, malformed payloads, timeouts.
+    -->
+    <test name="Error Handling Tests" preserve-order="true">
+        <groups>
+            <run>
+                <include name="errors"/>
+            </run>
+        </groups>
+        <classes>
+            <class name="com.apinexus.tests.errors.ErrorHandlingTest"/>
+        </classes>
+    </test>
+
+    <!--
+        ── PAGINATION AND FILTERING TESTS ──────────────────────────────────
+        Page numbers, per-page size, query-param filters, sort order.
+    -->
+    <test name="Pagination and Filtering Tests" preserve-order="true">
+        <groups>
+            <run>
+                <include name="pagination"/>
+            </run>
+        </groups>
+        <classes>
+            <class name="com.apinexus.tests.pagination.PaginationFilteringTest"/>
+        </classes>
+    </test>
+
+    <!--
+        ── PERFORMANCE TESTS ────────────────────────────────────────────────
+        Response-time SLA checks and concurrent-request load mini-test.
+    -->
+    <test name="Performance Tests" preserve-order="true">
+        <groups>
+            <run>
+                <include name="performance"/>
+            </run>
+        </groups>
+        <classes>
+            <class name="com.apinexus.tests.performance.PerformanceTest"/>
+        </classes>
+    </test>
+
+    <!--
+        ── API CHAINING TESTS ───────────────────────────────────────────────
+        Multi-step flows where a later request depends on an earlier response.
+    -->
+    <test name="API Chaining Tests" preserve-order="true">
+        <groups>
+            <run>
+                <include name="chaining"/>
+            </run>
+        </groups>
+        <classes>
+            <class name="com.apinexus.tests.chaining.ApiChainingTest"/>
+        </classes>
+    </test>
+
+    <!--
+        ── FILE UPLOAD TESTS ────────────────────────────────────────────────
+        Multipart/form-data uploads via the WireMock mock server.
+    -->
+    <test name="File Upload Tests" preserve-order="true">
+        <groups>
+            <run>
+                <include name="upload"/>
+            </run>
+        </groups>
+        <classes>
+            <class name="com.apinexus.tests.upload.FileUploadTest"/>
+        </classes>
+    </test>
+
+</suite>

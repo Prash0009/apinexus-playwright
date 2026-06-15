@@ -1,0 +1,12 @@
+{
+  "name": "GET /api/items/99999 — 404 Not Found",
+  "request": {
+    "method": "GET",
+    "url": "/api/items/99999"
+  },
+  "response": {
+    "status": 404,
+    "headers": { "Content-Type": "application/json" },
+    "bodyFileName": "error-response.json"
+  }
+}

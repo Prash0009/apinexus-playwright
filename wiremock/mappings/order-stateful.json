@@ -1,0 +1,37 @@
+[
+  {
+    "name": "Order PENDING — state: Started → PROCESSING",
+    "scenarioName": "order-processing-scenario",
+    "requiredScenarioState": "Started",
+    "newScenarioState": "PROCESSING",
+    "request": { "method": "GET", "url": "/api/orders/42" },
+    "response": {
+      "status": 200,
+      "headers": { "Content-Type": "application/json" },
+      "jsonBody": { "status": "PENDING" }
+    }
+  },
+  {
+    "name": "Order PROCESSING — state: PROCESSING → COMPLETE",
+    "scenarioName": "order-processing-scenario",
+    "requiredScenarioState": "PROCESSING",
+    "newScenarioState": "COMPLETE",
+    "request": { "method": "GET", "url": "/api/orders/42" },
+    "response": {
+      "status": 200,
+      "headers": { "Content-Type": "application/json" },
+      "jsonBody": { "status": "PROCESSING" }
+    }
+  },
+  {
+    "name": "Order COMPLETE — terminal state",
+    "scenarioName": "order-processing-scenario",
+    "requiredScenarioState": "COMPLETE",
+    "request": { "method": "GET", "url": "/api/orders/42" },
+    "response": {
+      "status": 200,
+      "headers": { "Content-Type": "application/json" },
+      "jsonBody": { "status": "COMPLETE" }
+    }
+  }
+]

@@ -1,0 +1,72 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# fly.toml — Deploys the ApiNexus WireMock server to Fly.io.
+#
+# Fly.io gives you a free persistent VM with a public HTTPS URL — perfect
+# for a shared WireMock instance that the whole team can use.
+#
+# PREREQUISITES:
+#   1. Create a free Fly.io account:  https://fly.io
+#   2. Install the CLI:               brew install flyctl
+#   3. Authenticate:                  fly auth login
+#
+# FIRST DEPLOY:
+#   fly launch        ← reads this file; creates the app in Fly.io
+#   fly deploy        ← builds the Docker image and deploys it
+#
+# SUBSEQUENT DEPLOYS (after changing stubs):
+#   fly deploy
+#
+# YOUR URL WILL BE:
+#   https://apinexus-wiremock.fly.dev   (or whatever app name you choose)
+#
+# UPDATE config.properties after deploying:
+#   mock.mode=remote
+#   mock.remote.url=https://apinexus-wiremock.fly.dev
+#   mock.remote.api.key=          (leave blank — Fly.io is public by default)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The app name — must be globally unique on Fly.io.
+# Change this to something unique before running `fly launch`.
+app = "apinexus-wiremock"
+
+# Fly.io primary region — pick the one closest to your team.
+# Full list: https://fly.io/docs/reference/regions/
+primary_region = "sin"   # Singapore; change to: bom (Mumbai), lax (LA), lhr (London), etc.
+
+[build]
+  # Fly.io builds and runs our Dockerfile automatically.
+  # No extra build args needed.
+
+[http_service]
+  # WireMock listens on 8080 inside the container.
+  # Fly.io terminates TLS and forwards to this port.
+  internal_port = 8080
+
+  # force_https = true redirects all HTTP → HTTPS automatically.
+  force_https = true
+
+  # auto_stop_machines = true pauses the VM when idle (saves cost on free tier).
+  # Set to false if you need the mock server always warm (no cold-start latency).
+  auto_stop_machines = true
+  auto_start_machines = true
+
+  # Minimum number of running machines.
+  # 1 means at least one instance is always alive (no cold starts after the
+  # first warm-up, but consumes your free allowance faster).
+  min_machines_running = 0
+
+[[vm]]
+  # Free tier: shared-cpu-1x with 256 MB RAM is sufficient for WireMock.
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+[checks]
+  # Fly.io health check — restarts the VM if WireMock becomes unresponsive.
+  [checks.wiremock_health]
+    grace_period = "10s"
+    interval     = "30s"
+    method       = "GET"
+    path         = "/__admin/health"
+    port         = 8080
+    timeout      = "5s"
+    type         = "http"

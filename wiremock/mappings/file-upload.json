@@ -1,0 +1,19 @@
+{
+  "name": "POST /api/upload — multipart file upload → 201 Created",
+  "request": {
+    "method": "POST",
+    "url": "/api/upload",
+    "headers": {
+      "Content-Type": { "contains": "multipart/form-data" }
+    }
+  },
+  "response": {
+    "status": 201,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "message": "File uploaded successfully",
+      "fileId": "abc-123",
+      "size": 1024
+    }
+  }
+}

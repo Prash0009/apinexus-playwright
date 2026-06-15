@@ -1,0 +1,64 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# docker-compose.yml — Runs WireMock locally via Docker Compose.
+#
+# Use this when:
+#   • You want a persistent local WireMock that survives JVM restarts
+#   • You want to edit stub files and have WireMock reload them live
+#   • You want to test the same stubs that will be deployed to the cloud
+#
+# USAGE:
+#   Start:   docker compose up -d
+#   Stop:    docker compose down
+#   Logs:    docker compose logs -f wiremock
+#   Reload:  docker compose restart wiremock
+#
+# Once running, update config.properties:
+#   mock.mode=remote
+#   mock.remote.url=http://localhost:8080
+#   mock.remote.api.key=          (leave blank — no auth in this config)
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  wiremock:
+    # Use the official WireMock Docker image (same base as our Dockerfile).
+    # Pin to a specific version so the compose file is reproducible.
+    image: wiremock/wiremock:3.5.4-1
+
+    container_name: apinexus-wiremock
+
+    ports:
+      # Map container port 8080 → host port 8080.
+      # Change the left side (host port) if 8080 is already in use.
+      - "8080:8080"
+
+    volumes:
+      # Mount the local wiremock/ directory into the container.
+      # Changes to stub files on the host are immediately visible inside
+      # the container WITHOUT rebuilding the image.
+      - ./wiremock/mappings:/home/wiremock/mappings
+      - ./wiremock/__files:/home/wiremock/__files
+
+    command:
+      # --port 8080          : HTTP port to listen on
+      # --verbose            : log each incoming request for debugging
+      # --watch-files        : reload stubs when JSON files change on disk
+      #                        (avoids restart for minor stub tweaks)
+      - "--port"
+      - "8080"
+      - "--verbose"
+      - "--watch-files"
+
+    restart: unless-stopped
+
+    healthcheck:
+      # Poll the WireMock Admin health endpoint every 10 seconds.
+      # The container is marked "healthy" once this returns 200.
+      test: ["CMD", "wget", "--quiet", "--tries=1",
+             "--spider", "http://localhost:8080/__admin/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s

@@ -1,0 +1,6 @@
+{
+  "error": "Resource not found",
+  "code": 404,
+  "message": "The requested resource does not exist on this server.",
+  "timestamp": "2024-01-15T10:30:00Z"
+}

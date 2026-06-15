@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ReqRes Single User Response",
+  "description": "JSON Schema that defines the shape of a single-user response from https://reqres.in/api/users/{id}",
+  "type": "object",
+  "required": ["data", "support"],
+  "properties": {
+    "data": {
+      "type": "object",
+      "description": "The user object returned by the API",
+      "required": ["id", "email", "first_name", "last_name", "avatar"],
+      "properties": {
+        "id":         { "type": "integer",  "description": "Unique user identifier" },
+        "email":      { "type": "string",   "format": "email", "description": "User email address" },
+        "first_name": { "type": "string",   "minLength": 1, "description": "User first name" },
+        "last_name":  { "type": "string",   "minLength": 1, "description": "User last name" },
+        "avatar":     { "type": "string",   "format": "uri",   "description": "URL to the user's avatar image" }
+      },
+      "additionalProperties": false
+    },
+    "support": {
+      "type": "object",
+      "description": "Support information included in every ReqRes response",
+      "required": ["url", "text"],
+      "properties": {
+        "url":  { "type": "string", "format": "uri" },
+        "text": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

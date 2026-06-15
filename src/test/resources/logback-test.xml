@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+    logback-test.xml — Logging configuration for the TEST classpath.
+    Logback loads THIS file in preference to logback.xml when it finds it
+    on the test classpath, which is exactly what we want: detailed logging
+    during test runs without affecting production code.
+-->
+<configuration>
+
+    <!--
+        CONSOLE APPENDER
+        Writes log records to System.out (standard output).
+        Eclipse shows this in the "Console" view when you run tests.
+    -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <!--
+                Pattern explanation:
+                  %d{HH:mm:ss.SSS}  — timestamp (hours:minutes:seconds.milliseconds)
+                  [%thread]          — name of the thread executing this log call
+                  %-5level           — log level, left-padded to 5 chars (DEBUG, INFO, WARN, ERROR)
+                  %logger{36}        — logger name truncated to 36 chars (usually the class name)
+                  - %msg%n           — the actual log message followed by a newline
+            -->
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!--
+        ROLLING FILE APPENDER
+        Writes log records to a file in the 'logs/' directory.
+        The file rolls over daily and when it reaches 10 MB.
+        Up to 30 days of history are kept.
+    -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <!-- Active log file path (relative to the directory where mvn is run) -->
+        <file>logs/apinexus-test.log</file>
+
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- Archive file name pattern: apinexus-test.2024-01-15.log -->
+            <fileNamePattern>logs/apinexus-test.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <timeBasedFileNamingAndTriggeringPolicy
+                    class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                <!-- Roll to a new file once the current file reaches 10 MB -->
+                <maxFileSize>10MB</maxFileSize>
+            </timeBasedFileNamingAndTriggeringPolicy>
+            <!-- Keep at most 30 days of log archives -->
+            <maxHistory>30</maxHistory>
+        </rollingPolicy>
+
+        <encoder>
+            <!-- Same detailed pattern as the console, plus the date for file readability -->
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!--
+        ROOT LOGGER — catches every log statement in the application.
+        Level DEBUG means DEBUG, INFO, WARN, and ERROR messages all appear.
+        Both the console and the rolling file receive every record.
+    -->
+    <root level="DEBUG">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+
+    <!--
+        PACKAGE-LEVEL OVERRIDES
+        WireMock and Playwright are chatty at DEBUG level; we silence them
+        to INFO so our own test logs remain readable.
+    -->
+    <logger name="com.github.tomakehurst.wiremock" level="INFO"/>
+    <logger name="com.microsoft.playwright" level="INFO"/>
+
+    <!-- Our test code can log at DEBUG — this is the most granular level -->
+    <logger name="com.apinexus" level="DEBUG"/>
+
+</configuration>

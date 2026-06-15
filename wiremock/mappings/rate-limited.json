@@ -1,0 +1,18 @@
+{
+  "name": "GET /api/heavy-operation — 429 Too Many Requests",
+  "request": {
+    "method": "GET",
+    "url": "/api/heavy-operation"
+  },
+  "response": {
+    "status": 429,
+    "headers": {
+      "Content-Type": "application/json",
+      "Retry-After": "60"
+    },
+    "jsonBody": {
+      "error": "Too Many Requests",
+      "retryAfter": 60
+    }
+  }
+}

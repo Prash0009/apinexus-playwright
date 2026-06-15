@@ -1,0 +1,24 @@
+{
+  "name": "POST /api/users — create user → 201 Created",
+  "request": {
+    "method": "POST",
+    "url": "/api/users",
+    "headers": {
+      "Content-Type": { "contains": "application/json" }
+    }
+  },
+  "response": {
+    "status": 201,
+    "headers": {
+      "Content-Type": "application/json",
+      "Location": "/api/users/201"
+    },
+    "jsonBody": {
+      "id": 201,
+      "name": "New User",
+      "email": "newuser@apinexus.io",
+      "role": "user",
+      "createdAt": "2024-01-15T10:30:00Z"
+    }
+  }
+}
