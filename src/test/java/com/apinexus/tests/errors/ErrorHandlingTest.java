@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.microsoft.playwright.APIResponse;
 import com.microsoft.playwright.options.RequestOptions;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
 import java.util.HashMap;
@@ -25,16 +26,22 @@ import java.util.Map;
  *   TC-ERR-01  404 Not Found — missing resource (live API)
  *   TC-ERR-02  404 response body structure (mock)
  *   TC-ERR-03  500 Internal Server Error (mock)
- *   TC-ERR-04  400 Bad Request — missing required field (live API)
+ *   TC-ERR-04  400 Bad Request — missing required field (mock)
  *   TC-ERR-05  405 Method Not Allowed (mock)
  *   TC-ERR-06  429 Too Many Requests / rate limiting (mock)
- *   TC-ERR-07  Malformed JSON request body (live API)
+ *   TC-ERR-07  Malformed JSON request body (mock)
  *   TC-ERR-08  Network fault / connection reset (mock)
  */
 @Test(groups = "errors")
 public class ErrorHandlingTest extends BaseApiTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
+
+    // Reset stubs after each test so registrations don't leak between tests.
+    @AfterMethod(alwaysRun = true)
+    public void resetStubs() {
+        mockServer.resetAllStubs();
+    }
 
     // ── TC-ERR-01: 404 Not Found (live API) ───────────────────────────────
 
@@ -154,11 +161,20 @@ public class ErrorHandlingTest extends BaseApiTest {
      * TC-ERR-04: POST /login with missing password field — expect 400.
      *
      * Sending an incomplete request body tests server-side input validation.
-     * ReqRes returns 400 with an "error" field explaining what is missing.
+     * The mocked login endpoint returns 400 with an "error" field explaining
+     * what is missing — mirroring reqres.in's real behaviour for this case
+     * (now simulated via WireMock since reqres.in requires an x-api-key
+     * header on every request).
      */
     @Test(description = "TC-ERR-04: POST with missing required field returns 400")
     public void testBadRequestMissingField() throws Exception {
         logTestStart("testBadRequestMissingField");
+
+        // Register the same login contract used by AuthenticationTest:
+        // only this exact email+password pair succeeds; anything else,
+        // including a request missing the password field entirely, falls
+        // through to the 400 catch-all stub.
+        mockServer.stubReqResLogin("/api/login", "eve.holt@reqres.in", "cityslicka", "irrelevant-token");
 
         // Deliberately omit the "password" field from the login body.
         // A robust API must reject this with 400, not 500 or 200.
@@ -167,7 +183,7 @@ public class ErrorHandlingTest extends BaseApiTest {
         // password intentionally missing
 
         String bodyJson = mapper.writeValueAsString(incompleteBody);
-        String url      = authBaseUrl + "/login";
+        String url      = mockBaseUrl + "/api/login";
 
         ApiLogger.logRequest("POST", url,
                 Map.of("Content-Type", "application/json"), bodyJson);
@@ -281,11 +297,18 @@ public class ErrorHandlingTest extends BaseApiTest {
     public void testMalformedRequestBody() {
         logTestStart("testMalformedRequestBody");
 
+        // Reuse the login contract: the malformed body below does not
+        // contain the exact "email":"..." / "password":"..." substrings the
+        // success stub requires, so it always falls through to the 400
+        // catch-all regardless of how it's spelled — exactly what we want
+        // to verify here (a 4xx, not a 5xx, for unparseable input).
+        mockServer.stubReqResLogin("/api/login", "eve.holt@reqres.in", "cityslicka", "irrelevant-token");
+
         // This is intentionally broken JSON: the closing brace is missing
         // and there is a trailing comma after the last field — both syntax errors.
         String malformedJson = "{\"email\": \"test@test.com\", \"password\": ";
 
-        String url = authBaseUrl + "/login";
+        String url = mockBaseUrl + "/api/login";
         ApiLogger.logRequest("POST", url,
                 Map.of("Content-Type", "application/json"), malformedJson);
 

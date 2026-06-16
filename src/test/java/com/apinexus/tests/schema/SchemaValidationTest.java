@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.microsoft.playwright.APIResponse;
 import com.microsoft.playwright.options.RequestOptions;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
 /**
@@ -26,7 +27,7 @@ import org.testng.annotations.Test;
  * using the networknt JSON Schema validator (draft-07).
  *
  * Scenarios covered:
- *   TC-SCHEMA-01  GET /users/2  — full user schema validation
+ *   TC-SCHEMA-01  GET /users/2  — full user schema validation (mocked)
  *   TC-SCHEMA-02  GET /posts/1  — full post schema validation
  *   TC-SCHEMA-03  POST /users   — created-user response schema validation
  *   TC-SCHEMA-04  Intentionally wrong schema — expect failure (negative test)
@@ -35,6 +36,13 @@ import org.testng.annotations.Test;
 public class SchemaValidationTest extends BaseApiTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
+
+    // Reset stubs after each test that registers one, so registrations
+    // never leak into a later test in this class.
+    @AfterMethod(alwaysRun = true)
+    public void resetStubs() {
+        mockServer.resetAllStubs();
+    }
 
     // ── TC-SCHEMA-01: User schema ──────────────────────────────────────────
 
@@ -48,13 +56,22 @@ public class SchemaValidationTest extends BaseApiTest {
      *   - data.first_name must be a non-empty string
      *   - data.avatar     must be a valid URI
      *   - support.url     must be a valid URI
+     *
+     * NOTE: Originally validated against the live reqres.in/api/users/2
+     * endpoint. reqres.in now requires an x-api-key header on every
+     * request, so the same response envelope is simulated via
+     * mockServer.stubReqResSingleUser() instead — the schema and its
+     * constraints are unchanged.
      */
     @Test(description = "TC-SCHEMA-01: ReqRes single-user response matches user_schema.json")
     public void testUserResponseSchema() {
         logTestStart("testUserResponseSchema");
 
-        // Use the auth base URL (reqres.in) for the users endpoint
-        String url = authBaseUrl + "/users/2";
+        mockServer.stubReqResSingleUser("/api/users/2", 2,
+                "janet.weaver@reqres.in", "Janet", "Weaver",
+                "https://reqres.in/img/faces/2-image.jpg");
+
+        String url = mockBaseUrl + "/api/users/2";
         ApiLogger.logRequest("GET", url);
 
         long start = startTimer();

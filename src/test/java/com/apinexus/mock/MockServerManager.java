@@ -230,17 +230,28 @@ public class MockServerManager implements MockServerStrategy {
         // Stub 1: Authenticated request → 200
         // matchingJsonPath / containing are request matchers; here we use
         // withHeader to match the Authorization header exactly.
+        //
+        // atPriority(1) is required here: WireMock does NOT automatically
+        // prefer a more specific stub over a more general one. Without an
+        // explicit priority, both stubs default to the same priority level
+        // and WireMock's tie-break is "most recently registered stub wins" —
+        // which would make stub 2 (the catch-all below) win even for
+        // requests that correctly include the Bearer token, since it is
+        // registered after stub 1. Explicit priorities make the match
+        // deterministic regardless of registration order.
         stubFor(get(urlEqualTo(path))
+                .atPriority(1)
                 .withHeader("Authorization", equalTo("Bearer " + validToken))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
                         .withBody(successBody)));
 
-        // Stub 2: No / wrong auth token → 401
-        // WireMock resolves stubs in declaration order, most recently declared first.
-        // The more specific stub (with header match) above takes priority.
+        // Stub 2: No / wrong auth token → 401 (catch-all, lower priority
+        // number = higher precedence in WireMock, so 5 here means "fires
+        // only when the priority-1 stub above does not match").
         stubFor(get(urlEqualTo(path))
+                .atPriority(5)
                 .willReturn(aResponse()
                         .withStatus(401)
                         .withHeader("Content-Type", "application/json")
@@ -328,6 +339,117 @@ public class MockServerManager implements MockServerStrategy {
                                   "\"fileId\":\"abc-123\",\"size\":1024}")));
 
         log.debug("Stub registered: POST {} (multipart) → 201", path);
+    }
+
+    /**
+     * Registers a ReqRes-style login endpoint (see MockServerStrategy for the contract).
+     * Two stubs are registered:
+     *   1. A high-priority stub matching a body that contains BOTH the valid
+     *      email and the valid password → 200 with a token.
+     *   2. A low-priority catch-all matching any other POST to the same path
+     *      (wrong credentials, or a missing field entirely) → 400.
+     * WireMock evaluates higher-priority (lower number) stubs first, so stub 1
+     * "wins" only when both conditions are met; everything else falls through
+     * to stub 2 — exactly mirroring reqres.in's real login behaviour.
+     */
+    @Override
+    public void stubReqResLogin(String path, String validEmail, String validPassword, String token) {
+        stubFor(post(urlEqualTo(path))
+                .atPriority(1)
+                .withRequestBody(containing("\"email\":\"" + validEmail + "\""))
+                .withRequestBody(containing("\"password\":\"" + validPassword + "\""))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"token\":\"" + token + "\"}")));
+
+        stubFor(post(urlEqualTo(path))
+                .atPriority(5)
+                .willReturn(aResponse()
+                        .withStatus(400)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"error\":\"user not found or missing required field\"}")));
+
+        log.debug("Stub registered: POST {} → 200 (valid creds) / 400 (anything else)", path);
+    }
+
+    /**
+     * Registers a ReqRes-style single-user endpoint matching schemas/user_schema.json:
+     *   { "data": {"id":..,"email":..,"first_name":..,"last_name":..,"avatar":..},
+     *     "support": {"url":..,"text":..} }
+     */
+    @Override
+    public void stubReqResSingleUser(String path, int userId, String email,
+                                     String firstName, String lastName, String avatarUrl) {
+        String body = "{"
+                + "\"data\":{"
+                + "\"id\":" + userId + ","
+                + "\"email\":\"" + email + "\","
+                + "\"first_name\":\"" + firstName + "\","
+                + "\"last_name\":\"" + lastName + "\","
+                + "\"avatar\":\"" + avatarUrl + "\""
+                + "},"
+                + "\"support\":{"
+                + "\"url\":\"https://reqres.in/#support-heading\","
+                + "\"text\":\"To keep ReqRes free, contributions towards server costs are appreciated!\""
+                + "}"
+                + "}";
+
+        stubFor(get(urlEqualTo(path))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(body)));
+
+        log.debug("Stub registered: GET {} → 200 (single user envelope)", path);
+    }
+
+    /**
+     * Registers a ReqRes-style paginated users list (see MockServerStrategy
+     * for the full contract). The "data" array is generated programmatically
+     * so callers don't need to hand-write JSON for up to 12 fake users.
+     */
+    @Override
+    public void stubReqResUsersPage(String path, int page, Integer perPage,
+                                    int total, int totalPages, int itemCount) {
+        StringBuilder dataArray = new StringBuilder("[");
+        for (int i = 0; i < itemCount; i++) {
+            int id = (page - 1) * (perPage != null ? perPage : itemCount) + i + 1;
+            if (i > 0) dataArray.append(",");
+            dataArray.append("{")
+                     .append("\"id\":").append(id).append(",")
+                     .append("\"email\":\"user").append(id).append("@apinexus.io\",")
+                     .append("\"first_name\":\"User\",")
+                     .append("\"last_name\":\"Number").append(id).append("\",")
+                     .append("\"avatar\":\"https://reqres.in/img/faces/").append(id).append("-image.jpg\"")
+                     .append("}");
+        }
+        dataArray.append("]");
+
+        String body = "{"
+                + "\"page\":" + page + ","
+                + "\"per_page\":" + (perPage != null ? perPage : 6) + ","
+                + "\"total\":" + total + ","
+                + "\"total_pages\":" + totalPages + ","
+                + "\"data\":" + dataArray
+                + "}";
+
+        // urlPathEqualTo() matches only the path; query params are matched
+        // separately so we can optionally omit the per_page constraint.
+        com.github.tomakehurst.wiremock.client.MappingBuilder mapping =
+                get(urlPathEqualTo(path)).withQueryParam("page", equalTo(String.valueOf(page)));
+
+        if (perPage != null) {
+            mapping = mapping.withQueryParam("per_page", equalTo(String.valueOf(perPage)));
+        }
+
+        stubFor(mapping.willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody(body)));
+
+        log.debug("Stub registered: GET {} page={} per_page={} → 200 ({} items)",
+                path, page, perPage, itemCount);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────

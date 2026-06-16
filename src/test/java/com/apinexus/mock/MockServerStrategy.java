@@ -93,4 +93,38 @@ public interface MockServerStrategy {
 
     /** POST {path} (multipart) → 201 with file-metadata body */
     void stubFileUpload(String path);
+
+    /**
+     * Registers a ReqRes-style login endpoint on POST {path}:
+     *   • body containing both validEmail and validPassword → 200 + {"token": token}
+     *   • any other body (wrong credentials OR a missing field) → 400 + {"error": "..."}
+     * Mirrors the real reqres.in /api/login contract closely enough for our
+     * auth-flow tests, without depending on the live (now API-key-gated) service.
+     */
+    void stubReqResLogin(String path, String validEmail, String validPassword, String token);
+
+    /**
+     * Registers a ReqRes-style single-user endpoint on GET {path} → 200 with
+     * the wrapped {"data": {...}, "support": {...}} envelope that
+     * schemas/user_schema.json validates against.
+     */
+    void stubReqResSingleUser(String path, int userId, String email,
+                              String firstName, String lastName, String avatarUrl);
+
+    /**
+     * Registers a ReqRes-style paginated users list on GET {path}, matching
+     * an exact "page" query param (and, if perPage is non-null, an exact
+     * "per_page" query param too). Generates {itemCount} fake user objects
+     * in the "data" array automatically.
+     *
+     * @param path       URL path, e.g. "/api/users"
+     * @param page       page number to match in the query string
+     * @param perPage    per_page value to match, or null to match requests
+     *                   that don't specify per_page at all
+     * @param total      "total" field value to report in the response
+     * @param totalPages "total_pages" field value to report
+     * @param itemCount  number of fake user objects to generate in "data"
+     */
+    void stubReqResUsersPage(String path, int page, Integer perPage,
+                             int total, int totalPages, int itemCount);
 }

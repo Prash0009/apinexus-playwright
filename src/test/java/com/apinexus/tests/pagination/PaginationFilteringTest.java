@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.microsoft.playwright.APIResponse;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -26,26 +27,44 @@ import org.testng.annotations.Test;
  *   TC-PAGE-10  Sorting (WireMock, since JSONPlaceholder does not support sort)
  *
  * JSONPlaceholder does NOT support real pagination (it always returns all items).
- * We use ReqRes for pagination tests (it returns page, per_page, total, total_pages).
+ * The pagination-metadata tests (page/per_page/total/total_pages) below
+ * simulate ReqRes's response contract via mockServer.stubReqResUsersPage().
+ *
+ * NOTE: These tests originally hit the live reqres.in/api/users endpoint.
+ * reqres.in now requires an x-api-key header on every request (a breaking
+ * change to their previously free, key-less API), so the pagination
+ * envelope is now generated locally via WireMock — same field names and
+ * math (page, per_page, total, total_pages, data[]), fully offline.
  */
 @Test(groups = "pagination")
 public class PaginationFilteringTest extends BaseApiTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
 
+    // Reset stubs after each test so page-specific registrations from one
+    // test never leak into another.
+    @AfterMethod(alwaysRun = true)
+    public void resetStubs() {
+        mockServer.resetAllStubs();
+    }
+
     // ── TC-PAGE-01: Default page ───────────────────────────────────────────
 
     /**
      * TC-PAGE-01: GET /users (page 1, default per_page=6).
      *
-     * ReqRes returns a paginated response with metadata fields:
+     * The mocked endpoint returns a paginated response with metadata fields:
      *   { "page": 1, "per_page": 6, "total": 12, "total_pages": 2, "data": [...] }
+     * — matching ReqRes's real contract.
      */
     @Test(description = "TC-PAGE-01: Default page 1 returns correct pagination metadata")
     public void testDefaultPaginationPage1() throws Exception {
         logTestStart("testDefaultPaginationPage1");
 
-        String url = authBaseUrl + "/users?page=1";
+        // 12 total users, 6 per page → 2 total pages.
+        mockServer.stubReqResUsersPage("/api/users", 1, null, 12, 2, 6);
+
+        String url = mockBaseUrl + "/api/users?page=1";
         ApiLogger.logRequest("GET", url);
 
         long start = startTimer();
@@ -95,7 +114,10 @@ public class PaginationFilteringTest extends BaseApiTest {
     public void testPage2() throws Exception {
         logTestStart("testPage2");
 
-        String url = authBaseUrl + "/users?page=2";
+        // Page 2 of the same 12-user, 6-per-page dataset used in TC-PAGE-01.
+        mockServer.stubReqResUsersPage("/api/users", 2, null, 12, 2, 6);
+
+        String url = mockBaseUrl + "/api/users?page=2";
         ApiLogger.logRequest("GET", url);
 
         APIResponse response = request.get(url);
@@ -129,7 +151,11 @@ public class PaginationFilteringTest extends BaseApiTest {
     public void testPerPageBoundaries(int perPage, int minExpectedItems) throws Exception {
         logTestStart("testPerPageBoundaries[perPage=" + perPage + "]");
 
-        String url = authBaseUrl + "/users?page=1&per_page=" + perPage;
+        // 12 total users; total_pages recalculated for each requested page size.
+        int totalPages = (int) Math.ceil(12.0 / perPage);
+        mockServer.stubReqResUsersPage("/api/users", 1, perPage, 12, totalPages, perPage);
+
+        String url = mockBaseUrl + "/api/users?page=1&per_page=" + perPage;
         ApiLogger.logRequest("GET", url);
 
         APIResponse response = request.get(url);
@@ -163,7 +189,8 @@ public class PaginationFilteringTest extends BaseApiTest {
     /**
      * TC-PAGE-04: Request a page number that exceeds the total number of pages.
      *
-     * ReqRes returns an empty data array for out-of-range pages (not a 404).
+     * ReqRes returns an empty data array for out-of-range pages (not a 404),
+     * and the mock reproduces that same behaviour: 200 with an empty "data".
      * Different APIs handle this differently; the key is that a page that
      * does not exist returns EITHER an empty collection (preferred) OR 404,
      * but NEVER 500 or the wrong page.
@@ -172,8 +199,10 @@ public class PaginationFilteringTest extends BaseApiTest {
     public void testPageBeyondTotal() throws Exception {
         logTestStart("testPageBeyondTotal");
 
-        // Page 999 is guaranteed not to exist on ReqRes (only 2 pages)
-        String url = authBaseUrl + "/users?page=999";
+        // Page 999 is out of range for a 12-user, 2-page dataset → empty data[]
+        mockServer.stubReqResUsersPage("/api/users", 999, null, 12, 2, 0);
+
+        String url = mockBaseUrl + "/api/users?page=999";
         ApiLogger.logRequest("GET", url);
 
         APIResponse response = request.get(url);
@@ -355,8 +384,13 @@ public class PaginationFilteringTest extends BaseApiTest {
     public void testTotalCountConsistency() throws Exception {
         logTestStart("testTotalCountConsistency");
 
+        // Register both pages of the same 12-user, 6-per-page dataset used
+        // in TC-PAGE-01/02, so the math below (6 + 6 == 12) is consistent.
+        mockServer.stubReqResUsersPage("/api/users", 1, null, 12, 2, 6);
+        mockServer.stubReqResUsersPage("/api/users", 2, null, 12, 2, 6);
+
         // Fetch page 1 to discover total and per_page
-        APIResponse page1Response = request.get(authBaseUrl + "/users?page=1");
+        APIResponse page1Response = request.get(mockBaseUrl + "/api/users?page=1");
         ResponseValidator.assertStatusCode(page1Response, 200);
         JsonNode page1Body = mapper.readTree(page1Response.text());
 
@@ -371,7 +405,7 @@ public class PaginationFilteringTest extends BaseApiTest {
 
         for (int page = 2; page <= totalPages; page++) {
             ApiLogger.logStep(page, "Fetching page " + page + " of " + totalPages);
-            APIResponse pageResponse = request.get(authBaseUrl + "/users?page=" + page);
+            APIResponse pageResponse = request.get(mockBaseUrl + "/api/users?page=" + page);
             ResponseValidator.assertStatusCode(pageResponse, 200);
             JsonNode pageBody = mapper.readTree(pageResponse.text());
             collectedItems += pageBody.get("data").size();

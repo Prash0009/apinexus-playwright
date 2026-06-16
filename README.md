@@ -61,14 +61,21 @@ HTTP requests (or intercepts them with a local mock server) and asserts on:
 | Response time SLA | `ResponseValidator.assertResponseTime()` |
 | Request was made correctly | `WireMock.verify()` |
 
-The framework targets **two live public APIs** (no account required) plus an
+The framework targets **one live public API** (no account required) plus an
 **embedded WireMock server** that runs inside the test JVM:
 
 | Backend | Used for |
 |---|---|
-| `jsonplaceholder.typicode.com` | CRUD, chaining, schema, pagination, errors |
-| `reqres.in/api` | Authentication, pagination meta, user schema |
-| `localhost:8089` (WireMock) | Mocking, error simulation, upload, performance |
+| `jsonplaceholder.typicode.com` | CRUD, chaining, schema (post), errors (partial), pagination (posts/comments) |
+| `localhost:8089` (WireMock) | Mocking, all authentication, schema (user), errors (most), pagination (users), upload, performance (partial) |
+
+> **Why no reqres.in?** This suite originally also exercised the live
+> reqres.in `/api/login`, `/api/users`, and `/api/users/{id}` endpoints.
+> reqres.in has since started requiring an `x-api-key` header on every
+> request (a breaking change to their previously free, key-less API), so
+> those scenarios are now simulated via `MockServerManager.stubReqResLogin()`
+> / `stubReqResSingleUser()` / `stubReqResUsersPage()` — same request/response
+> contract, fully offline, and immune to future third-party policy changes.
 
 ---
 
@@ -413,7 +420,7 @@ TestNG calls the test method once per row — three executions in this case.
 
 ### 6.2 AuthenticationTest
 
-**Group:** `auth` | **API:** ReqRes (live) + WireMock (mock)
+**Group:** `auth` | **API:** Embedded WireMock only (simulates the ReqRes login contract)
 
 | TC | Scenario | Auth type |
 |---|---|---|
@@ -443,7 +450,7 @@ If the header is absent or wrong, Stub 2 fires.
 
 ### 6.3 SchemaValidationTest
 
-**Group:** `schema` | **API:** JSONPlaceholder + ReqRes + WireMock
+**Group:** `schema` | **API:** JSONPlaceholder (live) + WireMock (simulates ReqRes single-user contract)
 
 | TC | Scenario |
 |---|---|
@@ -476,14 +483,14 @@ If the header is absent or wrong, Stub 2 fires.
 
 ### 6.4 ErrorHandlingTest
 
-**Group:** `errors` | **API:** JSONPlaceholder + ReqRes + WireMock
+**Group:** `errors` | **API:** JSONPlaceholder (live, partial) + WireMock (most scenarios, including the simulated ReqRes login contract)
 
 | TC | Status | Trigger |
 |---|---|---|
 | ERR-01 | 404 | GET `/posts/9999` on live API |
 | ERR-02 | 404 | WireMock stub returning JSON error body |
 | ERR-03 | 500 | WireMock stub returning plain-text error body |
-| ERR-04 | 400 | POST to ReqRes `/login` with missing `password` field |
+| ERR-04 | 400 | POST to mocked `/login` with missing `password` field |
 | ERR-05 | 405 | DELETE to a read-only WireMock endpoint; `Allow` header verified |
 | ERR-06 | 429 | WireMock stub; `Retry-After: 60` header verified |
 | ERR-07 | 4xx | POST with syntactically broken JSON body |
@@ -505,7 +512,7 @@ try {
 
 ### 6.5 PaginationFilteringTest
 
-**Group:** `pagination` | **API:** ReqRes + JSONPlaceholder + WireMock
+**Group:** `pagination` | **API:** JSONPlaceholder (live, posts/comments) + WireMock (simulates ReqRes users pagination contract) + WireMock (sort)
 
 | TC | Scenario |
 |---|---|
@@ -1131,10 +1138,11 @@ right-click the folder → `Build Path → Use as Source Folder`.
 In Maven this is automatic.
 
 ### `PlaywrightException: net::ERR_NAME_NOT_RESOLVED`
-You have no internet access. The live-API tests (CRUD, auth, chaining, schema,
-pagination) require connectivity to `jsonplaceholder.typicode.com` and
-`reqres.in`. The WireMock-only tests (mock, upload, errors in part) will still
-pass offline.
+You have no internet access. Tests that hit JSONPlaceholder (`crud`,
+`chaining`, most of `schema`/`errors`/`pagination`) require connectivity to
+`jsonplaceholder.typicode.com`. `auth`, `mock`, `upload`, and the
+ReqRes-simulating parts of `schema`/`errors`/`pagination` run entirely
+against the embedded WireMock server and will pass with zero internet access.
 
 ### `Schema validation FAILED: $.email: does not match the email format`
 The live API returned an email address that doesn't satisfy the validator's

@@ -9,6 +9,7 @@ import com.microsoft.playwright.APIRequestContext;
 import com.microsoft.playwright.APIResponse;
 import com.microsoft.playwright.options.RequestOptions;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
 import java.util.Base64;
@@ -31,23 +32,37 @@ import java.util.Map;
  *   │  08 │ Token obtained from login → reused    │ 200 (chained auth flow)   │
  *   └──────────────────────────────────────────────────────────────────────────┘
  *
- * ReqRes (https://reqres.in) is used for the live login tests.
- * WireMock handles the Bearer / Basic / API-Key scenarios (no live API needed).
+ * All scenarios run entirely against the embedded WireMock server.
+ *
+ * NOTE: This suite originally exercised reqres.in's live /login endpoint.
+ * reqres.in has since started requiring an x-api-key header on every
+ * request (a breaking change to their previously free, key-less API), so
+ * login is now simulated via mockServer.stubReqResLogin() instead — same
+ * request/response contract, but fully offline and immune to third-party
+ * policy changes.
  */
 @Test(groups = "auth")
 public class AuthenticationTest extends BaseApiTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
 
-    // ReqRes test credentials (publicly documented on the site)
+    // Credentials used to exercise the mocked login endpoint.
     private static final String VALID_EMAIL    = "eve.holt@reqres.in";
     private static final String VALID_PASSWORD = "cityslicka";
     private static final String WRONG_EMAIL    = "invalid@no.domain";
     private static final String WRONG_PASSWORD = "wrongpassword";
+    private static final String MOCK_TOKEN      = "mock-login-token-QpwL5tpe83";
 
     // Mock API key value — must match what MockServerManager stubs against
     private static final String API_KEY        = "nexus-api-key-secret-9876";
     private static final String BEARER_TOKEN   = "mock-bearer-token-abc123";
+
+    // Reset stubs after each test so login/auth registrations from one test
+    // never leak into another (matches the pattern used in MockServerTest).
+    @AfterMethod(alwaysRun = true)
+    public void resetStubs() {
+        mockServer.resetAllStubs();
+    }
 
     // ── TC-AUTH-01: Valid login ────────────────────────────────────────────
 
@@ -62,15 +77,17 @@ public class AuthenticationTest extends BaseApiTest {
     public void testValidLogin() throws Exception {
         logTestStart("testValidLogin");
 
+        // Register the mock login endpoint: this exact email/password pair
+        // succeeds; anything else (TC-AUTH-02) falls through to 400.
+        mockServer.stubReqResLogin("/api/login", VALID_EMAIL, VALID_PASSWORD, MOCK_TOKEN);
+
         // Build the login request body as a JSON string.
         Map<String, String> loginBody = new HashMap<>();
         loginBody.put("email",    VALID_EMAIL);
         loginBody.put("password", VALID_PASSWORD);
         String bodyJson = mapper.writeValueAsString(loginBody);
 
-        // We use authBaseUrl (reqres.in) for authentication endpoints,
-        // NOT the JSONPlaceholder base URL.
-        String url = authBaseUrl + "/login";
+        String url = mockBaseUrl + "/api/login";
         ApiLogger.logRequest("POST", url,
                 Map.of("Content-Type", "application/json"), bodyJson);
 
@@ -108,12 +125,16 @@ public class AuthenticationTest extends BaseApiTest {
     public void testInvalidLogin() throws Exception {
         logTestStart("testInvalidLogin");
 
+        // Same login stub as TC-AUTH-01: only VALID_EMAIL/VALID_PASSWORD
+        // succeed, so this wrong pair falls through to the 400 catch-all.
+        mockServer.stubReqResLogin("/api/login", VALID_EMAIL, VALID_PASSWORD, MOCK_TOKEN);
+
         Map<String, String> badLogin = new HashMap<>();
         badLogin.put("email",    WRONG_EMAIL);
         badLogin.put("password", WRONG_PASSWORD);
         String bodyJson = mapper.writeValueAsString(badLogin);
 
-        String url = authBaseUrl + "/login";
+        String url = mockBaseUrl + "/api/login";
         ApiLogger.logRequest("POST", url,
                 Map.of("Content-Type", "application/json"), bodyJson);
 
@@ -369,12 +390,14 @@ public class AuthenticationTest extends BaseApiTest {
         // ── Step 1: Login to obtain a token ──────────────────────────────
         ApiLogger.logStep(1, "POST /login to obtain token");
 
+        mockServer.stubReqResLogin("/api/login", VALID_EMAIL, VALID_PASSWORD, MOCK_TOKEN);
+
         Map<String, String> loginBody = new HashMap<>();
         loginBody.put("email",    VALID_EMAIL);
         loginBody.put("password", VALID_PASSWORD);
         String loginJson = mapper.writeValueAsString(loginBody);
 
-        APIResponse loginResponse = request.post(authBaseUrl + "/login",
+        APIResponse loginResponse = request.post(mockBaseUrl + "/api/login",
                 RequestOptions.create()
                         .setHeader("Content-Type", "application/json")
                         .setData(loginJson));

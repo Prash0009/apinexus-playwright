@@ -401,6 +401,120 @@ public class RemoteMockServerManager implements MockServerStrategy {
         log.debug("Remote stub registered: POST {} (multipart) → 201", path);
     }
 
+    @Override
+    public void stubReqResLogin(String path, String validEmail, String validPassword, String token) {
+        String successStub = "{"
+                + "\"name\": \"POST " + path + " — valid login → 200\","
+                + "\"priority\": 1,"
+                + "\"request\": {"
+                + "  \"method\": \"POST\","
+                + "  \"url\": \"" + path + "\","
+                + "  \"bodyPatterns\": ["
+                + "    {\"contains\": \"\\\"email\\\":\\\"" + validEmail + "\\\"\"},"
+                + "    {\"contains\": \"\\\"password\\\":\\\"" + validPassword + "\\\"\"}"
+                + "  ]"
+                + "},"
+                + "\"response\": {"
+                + "  \"status\": 200,"
+                + "  \"headers\": {\"Content-Type\": \"application/json\"},"
+                + "  \"body\": \"{\\\"token\\\":\\\"" + token + "\\\"}\""
+                + "}"
+                + "}";
+
+        String catchAllStub = "{"
+                + "\"name\": \"POST " + path + " — anything else → 400\","
+                + "\"priority\": 5,"
+                + "\"request\": {\"method\": \"POST\", \"url\": \"" + path + "\"},"
+                + "\"response\": {"
+                + "  \"status\": 400,"
+                + "  \"headers\": {\"Content-Type\": \"application/json\"},"
+                + "  \"body\": \"{\\\"error\\\":\\\"user not found or missing required field\\\"}\""
+                + "}"
+                + "}";
+
+        registerStub(successStub);
+        registerStub(catchAllStub);
+        log.debug("Remote stub registered: POST {} → 200 (valid creds) / 400 (anything else)", path);
+    }
+
+    @Override
+    public void stubReqResSingleUser(String path, int userId, String email,
+                                     String firstName, String lastName, String avatarUrl) {
+        String bodyJson = "{"
+                + "\\\"data\\\":{"
+                + "\\\"id\\\":" + userId + ","
+                + "\\\"email\\\":\\\"" + email + "\\\","
+                + "\\\"first_name\\\":\\\"" + firstName + "\\\","
+                + "\\\"last_name\\\":\\\"" + lastName + "\\\","
+                + "\\\"avatar\\\":\\\"" + avatarUrl + "\\\""
+                + "},"
+                + "\\\"support\\\":{"
+                + "\\\"url\\\":\\\"https://reqres.in/#support-heading\\\","
+                + "\\\"text\\\":\\\"To keep ReqRes free, contributions towards server costs are appreciated!\\\""
+                + "}"
+                + "}";
+
+        String stub = "{"
+                + "\"name\": \"GET " + path + " — single user envelope\","
+                + "\"request\": {\"method\": \"GET\", \"url\": \"" + path + "\"},"
+                + "\"response\": {"
+                + "  \"status\": 200,"
+                + "  \"headers\": {\"Content-Type\": \"application/json\"},"
+                + "  \"body\": \"{" + bodyJson + "}\""
+                + "}"
+                + "}";
+
+        registerStub(stub);
+        log.debug("Remote stub registered: GET {} → 200 (single user envelope)", path);
+    }
+
+    @Override
+    public void stubReqResUsersPage(String path, int page, Integer perPage,
+                                    int total, int totalPages, int itemCount) {
+        StringBuilder dataArray = new StringBuilder("[");
+        for (int i = 0; i < itemCount; i++) {
+            int id = (page - 1) * (perPage != null ? perPage : itemCount) + i + 1;
+            if (i > 0) dataArray.append(",");
+            dataArray.append("{")
+                     .append("\\\"id\\\":").append(id).append(",")
+                     .append("\\\"email\\\":\\\"user").append(id).append("@apinexus.io\\\",")
+                     .append("\\\"first_name\\\":\\\"User\\\",")
+                     .append("\\\"last_name\\\":\\\"Number").append(id).append("\\\",")
+                     .append("\\\"avatar\\\":\\\"https://reqres.in/img/faces/").append(id).append("-image.jpg\\\"")
+                     .append("}");
+        }
+        dataArray.append("]");
+
+        String bodyJson = "\\\"page\\\":" + page + ","
+                + "\\\"per_page\\\":" + (perPage != null ? perPage : 6) + ","
+                + "\\\"total\\\":" + total + ","
+                + "\\\"total_pages\\\":" + totalPages + ","
+                + "\\\"data\\\":" + dataArray;
+
+        StringBuilder queryParams = new StringBuilder("\"page\": {\"equalTo\": \"" + page + "\"}");
+        if (perPage != null) {
+            queryParams.append(", \"per_page\": {\"equalTo\": \"").append(perPage).append("\"}");
+        }
+
+        String stub = "{"
+                + "\"name\": \"GET " + path + " page=" + page + " — paginated users\","
+                + "\"request\": {"
+                + "  \"method\": \"GET\","
+                + "  \"urlPath\": \"" + path + "\","
+                + "  \"queryParameters\": {" + queryParams + "}"
+                + "},"
+                + "\"response\": {"
+                + "  \"status\": 200,"
+                + "  \"headers\": {\"Content-Type\": \"application/json\"},"
+                + "  \"body\": \"{" + bodyJson + "}\""
+                + "}"
+                + "}";
+
+        registerStub(stub);
+        log.debug("Remote stub registered: GET {} page={} per_page={} → 200 ({} items)",
+                path, page, perPage, itemCount);
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────
 
     /**

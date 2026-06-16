@@ -117,14 +117,20 @@ onboarding a new team member who has not read the Java code.
 
 ## 2. Authentication (TC-AUTH)
 
-**Class:** `com.apinexus.tests.auth.AuthenticationTest` | **Group:** `auth` | **Target:** `https://reqres.in/api` (live) + WireMock (mock)
+**Class:** `com.apinexus.tests.auth.AuthenticationTest` | **Group:** `auth` | **Target:** Embedded WireMock only
+
+> **Note:** reqres.in now requires an `x-api-key` header on every request (a
+> breaking change to their previously free, key-less API). All login/auth
+> scenarios below are simulated via `mockServer.stubReqResLogin()` /
+> `stubBearerAuthProtected()`, reproducing the same request/response
+> contract this suite originally exercised live — fully offline now.
 
 ### TC-AUTH-01 — Valid login credentials return a Bearer token
 
 | Field | Detail |
 |---|---|
-| **Precondition** | ReqRes demo account `eve.holt@reqres.in` / `cityslicka` is active |
-| **Test Steps** | 1. Build JSON body with `email` and `password`<br>2. Send `POST /login`<br>3. Assert status code equals 200<br>4. Assert `Content-Type` contains `application/json`<br>5. Parse body; assert a non-blank `token` field is present |
+| **Precondition** | `mockServer.stubReqResLogin("/api/login", "eve.holt@reqres.in", "cityslicka", token)` registered |
+| **Test Steps** | 1. Build JSON body with `email` and `password`<br>2. Send `POST /api/login`<br>3. Assert status code equals 200<br>4. Assert `Content-Type` contains `application/json`<br>5. Parse body; assert a non-blank `token` field is present |
 | **Test Data** | `email=eve.holt@reqres.in`, `password=cityslicka` |
 | **Expected Result** | HTTP 200; JSON body contains a non-empty `token` |
 
@@ -132,8 +138,8 @@ onboarding a new team member who has not read the Java code.
 
 | Field | Detail |
 |---|---|
-| **Precondition** | None |
-| **Test Steps** | 1. Build JSON body with an invalid `email`/`password` pair<br>2. Send `POST /login`<br>3. Assert status code equals 400<br>4. Assert response body contains the word `error` |
+| **Precondition** | Same login stub as TC-AUTH-01; only the exact valid email/password pair succeeds, so any other combination falls through to the stub's 400 catch-all |
+| **Test Steps** | 1. Build JSON body with an invalid `email`/`password` pair<br>2. Send `POST /api/login`<br>3. Assert status code equals 400<br>4. Assert response body contains the word `error` |
 | **Test Data** | `email=invalid@no.domain`, `password=wrongpassword` |
 | **Expected Result** | HTTP 400; body contains an `error` field explaining the rejection |
 
@@ -186,10 +192,10 @@ onboarding a new team member who has not read the Java code.
 
 | Field | Detail |
 |---|---|
-| **Precondition** | ReqRes demo account active; WireMock available for step 2 |
-| **Test Steps** | **Step 1 (live):** Send `POST /login` with valid credentials; extract `token` from the response.<br>**Step 2 (mock):** Register a WireMock stub on `/api/secure-users` that requires `Authorization: Bearer {token}` from step 1; send `GET /api/secure-users` with that header; assert 200 and body contains `"Protected Data"` |
+| **Precondition** | Login stub from TC-AUTH-01 registered for step 1 |
+| **Test Steps** | **Step 1 (mock):** Send `POST /api/login` with valid credentials against the login stub; extract `token` from the response.<br>**Step 2 (mock):** Register a second WireMock stub on `/api/secure-users` that requires `Authorization: Bearer {token}` from step 1; send `GET /api/secure-users` with that header; assert 200 and body contains `"Protected Data"` |
 | **Test Data** | `email=eve.holt@reqres.in`, `password=cityslicka` |
-| **Expected Result** | Step 1 returns a token; step 2 succeeds using exactly that token (full auth chain) |
+| **Expected Result** | Step 1 returns a token; step 2 succeeds using exactly that token (full auth chain, end-to-end through two independently registered stubs) |
 
 ---
 
@@ -197,12 +203,12 @@ onboarding a new team member who has not read the Java code.
 
 **Class:** `com.apinexus.tests.schema.SchemaValidationTest` | **Group:** `schema`
 
-### TC-SCHEMA-01 — ReqRes single-user response matches user_schema.json
+### TC-SCHEMA-01 — ReqRes single-user response matches user_schema.json (mocked)
 
 | Field | Detail |
 |---|---|
-| **Precondition** | ReqRes user `id=2` exists |
-| **Test Steps** | 1. Send `GET https://reqres.in/api/users/2`<br>2. Assert status code equals 200<br>3. Validate response body against `schemas/user_schema.json` (draft-07) |
+| **Precondition** | `mockServer.stubReqResSingleUser("/api/users/2", 2, ...)` registered — reqres.in now requires an `x-api-key` header, so this reproduces the same response envelope via WireMock instead of the live endpoint |
+| **Test Steps** | 1. Send `GET /api/users/2` (mock server)<br>2. Assert status code equals 200<br>3. Validate response body against `schemas/user_schema.json` (draft-07) |
 | **Test Data** | User ID = 2 |
 | **Expected Result** | HTTP 200; body satisfies the schema: `data.id` integer, `data.email` valid email format, `data.first_name`/`last_name` non-empty strings, `data.avatar` valid URI, `support.url`/`text` present |
 
@@ -275,12 +281,12 @@ onboarding a new team member who has not read the Java code.
 | **Test Data** | None |
 | **Expected Result** | HTTP 500; non-empty error body |
 
-### TC-ERR-04 — POST with missing required field returns 400
+### TC-ERR-04 — POST with missing required field returns 400 (mocked)
 
 | Field | Detail |
 |---|---|
-| **Precondition** | None |
-| **Test Steps** | 1. Build a login JSON body containing only `email` (deliberately omit `password`)<br>2. Send `POST https://reqres.in/api/login`<br>3. Assert status code equals 400<br>4. Assert body contains `"error"` |
+| **Precondition** | `mockServer.stubReqResLogin("/api/login", ...)` registered — reqres.in now requires an `x-api-key` header, so this reproduces the same 400 behaviour via WireMock |
+| **Test Steps** | 1. Build a login JSON body containing only `email` (deliberately omit `password`)<br>2. Send `POST /api/login` (mock server)<br>3. Assert status code equals 400<br>4. Assert body contains `"error"` |
 | **Test Data** | `email=peter@klaven.com` (no password) |
 | **Expected Result** | HTTP 400; server rejects the incomplete request |
 
@@ -302,12 +308,12 @@ onboarding a new team member who has not read the Java code.
 | **Test Data** | None |
 | **Expected Result** | HTTP 429; `Retry-After: 60` instructs the client when to retry |
 
-### TC-ERR-07 — Malformed JSON request body returns 400
+### TC-ERR-07 — Malformed JSON request body returns 400 (mocked)
 
 | Field | Detail |
 |---|---|
-| **Precondition** | None |
-| **Test Steps** | 1. Build a syntactically broken JSON string (unterminated, e.g. `{"email": "test@test.com", "password": `)<br>2. Send `POST https://reqres.in/api/login` with this body<br>3. Assert status code is in range 400–499 |
+| **Precondition** | Same login stub as TC-ERR-04; the malformed body never matches the success pattern, so it always falls through to the 400 catch-all |
+| **Test Steps** | 1. Build a syntactically broken JSON string (unterminated, e.g. `{"email": "test@test.com", "password": `)<br>2. Send `POST /api/login` (mock server) with this body<br>3. Assert status code is in range 400–499 |
 | **Test Data** | Broken JSON string (missing closing brace and value) |
 | **Expected Result** | A 4xx status (not 500) — confirms server-side JSON parsing validation |
 
@@ -326,39 +332,46 @@ onboarding a new team member who has not read the Java code.
 
 **Class:** `com.apinexus.tests.pagination.PaginationFilteringTest` | **Group:** `pagination`
 
-### TC-PAGE-01 — Default page 1 returns correct pagination metadata
+> **Note:** TC-PAGE-01/02/03/04/08 originally hit the live reqres.in
+> `/api/users` endpoint, which now requires an `x-api-key` header (a
+> breaking change to their previously free, key-less API). Each of these
+> tests now registers its own `mockServer.stubReqResUsersPage(...)` stub
+> that reproduces the same `page`/`per_page`/`total`/`total_pages`/`data[]`
+> envelope, generated with the exact item count the test needs.
+
+### TC-PAGE-01 — Default page 1 returns correct pagination metadata (mocked)
 
 | Field | Detail |
 |---|---|
-| **Precondition** | ReqRes `/users` endpoint has 12 users across 2 pages (6 per page) |
-| **Test Steps** | 1. Send `GET https://reqres.in/api/users?page=1`<br>2. Assert status code equals 200<br>3. Assert `page` field equals `1`<br>4. Assert `per_page` is positive<br>5. Assert `data` array size ≤ `per_page`<br>6. Assert `total_pages == ceil(total / per_page)` |
+| **Precondition** | `mockServer.stubReqResUsersPage("/api/users", 1, null, 12, 2, 6)` registered — 12 total users, 6 per page |
+| **Test Steps** | 1. Send `GET /api/users?page=1` (mock server)<br>2. Assert status code equals 200<br>3. Assert `page` field equals `1`<br>4. Assert `per_page` is positive<br>5. Assert `data` array size ≤ `per_page`<br>6. Assert `total_pages == ceil(total / per_page)` |
 | **Test Data** | Query param `page=1` |
 | **Expected Result** | HTTP 200; pagination metadata is mathematically consistent |
 
-### TC-PAGE-02 — Requesting page 2 returns page=2 in response metadata
+### TC-PAGE-02 — Requesting page 2 returns page=2 in response metadata (mocked)
 
 | Field | Detail |
 |---|---|
-| **Precondition** | Page 2 exists |
-| **Test Steps** | 1. Send `GET /users?page=2`<br>2. Assert status code equals 200<br>3. Assert `page` field equals `2`<br>4. Assert `data` array is non-empty |
+| **Precondition** | `mockServer.stubReqResUsersPage("/api/users", 2, null, 12, 2, 6)` registered |
+| **Test Steps** | 1. Send `GET /api/users?page=2` (mock server)<br>2. Assert status code equals 200<br>3. Assert `page` field equals `2`<br>4. Assert `data` array is non-empty |
 | **Test Data** | Query param `page=2` |
 | **Expected Result** | HTTP 200; server actually returns page 2, not a cached page 1 |
 
-### TC-PAGE-03 — Boundary per_page values return correct item counts (data-driven)
+### TC-PAGE-03 — Boundary per_page values return correct item counts (data-driven, mocked)
 
 | Field | Detail |
 |---|---|
-| **Precondition** | None |
-| **Test Steps** | For each `(perPage, minExpectedItems)` row:<br>1. Send `GET /users?page=1&per_page={perPage}`<br>2. Assert status code equals 200<br>3. Assert `data.size() >= minExpectedItems` |
+| **Precondition** | None — each data row registers its own `stubReqResUsersPage` with `itemCount=perPage` and `totalPages=ceil(12/perPage)` |
+| **Test Steps** | For each `(perPage, minExpectedItems)` row:<br>1. Register the matching stub for that exact `per_page`<br>2. Send `GET /api/users?page=1&per_page={perPage}` (mock server)<br>3. Assert status code equals 200<br>4. Assert `data.size() >= minExpectedItems` |
 | **Test Data** | Row 1: `per_page=1`, expect ≥1 item<br>Row 2: `per_page=6`, expect ≥6 items<br>Row 3: `per_page=12`, expect ≥6 items |
 | **Expected Result** | Server honours the requested page size at each boundary |
 
-### TC-PAGE-04 — Page beyond total returns empty data or 404
+### TC-PAGE-04 — Page beyond total returns empty data or 404 (mocked)
 
 | Field | Detail |
 |---|---|
-| **Precondition** | Page 999 does not exist (only 2 pages total) |
-| **Test Steps** | 1. Send `GET /users?page=999`<br>2. Assert status code is 200 or 404<br>3. If 200, assert the `data` array is empty |
+| **Precondition** | `mockServer.stubReqResUsersPage("/api/users", 999, null, 12, 2, 0)` registered — 0 items for the out-of-range page |
+| **Test Steps** | 1. Send `GET /api/users?page=999` (mock server)<br>2. Assert status code is 200 or 404<br>3. If 200, assert the `data` array is empty |
 | **Test Data** | Query param `page=999` |
 | **Expected Result** | Graceful handling of an out-of-range page — no 500 error |
 
@@ -389,13 +402,13 @@ onboarding a new team member who has not read the Java code.
 | **Test Data** | Items priced 9, 49, 199 |
 | **Expected Result** | Items returned in strict ascending price order |
 
-### TC-PAGE-08 — Sum of paginated items equals the reported total
+### TC-PAGE-08 — Sum of paginated items equals the reported total (mocked)
 
 | Field | Detail |
 |---|---|
-| **Precondition** | ReqRes `/users` paginates correctly |
+| **Precondition** | Both `stubReqResUsersPage` registrations from TC-PAGE-01/02 (page 1 and page 2, 6 items each, total=12) |
 | **Test Steps** | 1. Fetch page 1; read `total` and `total_pages` from the response<br>2. Sum `data.size()` for page 1<br>3. Loop fetching pages 2..`total_pages`, summing `data.size()` for each<br>4. Assert the running sum equals the reported `total` |
-| **Test Data** | None (driven entirely by live response metadata) |
+| **Test Data** | None (driven entirely by the mocked response metadata) |
 | **Expected Result** | Total item count across all pages exactly matches the API's reported `total` field |
 
 ---
@@ -635,9 +648,8 @@ onboarding a new team member who has not read the Java code.
 
 | Source | Used By | Notes |
 |---|---|---|
-| `https://jsonplaceholder.typicode.com` | CRUD, Schema, Errors, Pagination, Chaining | Live, free, no auth required; writes are faked (not persisted) |
-| `https://reqres.in/api` | Auth, Schema (user), Pagination (users) | Live, free; simulates real login/pagination semantics |
-| Embedded WireMock (`localhost:8089`) | Mock, Auth (partial), Errors (partial), Pagination (sort), Performance (partial), Upload | Started in `@BeforeSuite`; stubs reset between tests |
+| `https://jsonplaceholder.typicode.com` | CRUD, Schema (post), Errors (partial), Pagination (posts/comments), Chaining | Live, free, no auth required; writes are faked (not persisted) |
+| Embedded WireMock (`localhost:8089`) | Mock, Auth (all), Schema (user), Errors (most), Pagination (users), Performance (partial), Upload | Started in `@BeforeSuite`; stubs reset between tests. Also simulates the ReqRes login/single-user/pagination contract — reqres.in now requires an `x-api-key` header on every request, so those scenarios moved here from the live API |
 | `src/test/resources/testdata/mock_responses/users_response.json` | TC-MOCK-01 | Static fixture file |
 | `src/test/resources/testdata/mock_responses/error_response.json` | TC-ERR-02 | Static fixture file |
 | `src/test/resources/schemas/post_schema.json` | TC-SCHEMA-02/03/04 | JSON Schema draft-07 |

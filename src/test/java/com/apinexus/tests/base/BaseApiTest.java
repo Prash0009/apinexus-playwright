@@ -71,7 +71,16 @@ public abstract class BaseApiTest {
     /** Convenience field: base URL of the JSONPlaceholder live API. */
     protected static String baseUrl;
 
-    /** Convenience field: base URL of the ReqRes live auth API. */
+    /**
+     * Convenience field: base URL of the ReqRes live auth API.
+     * No test class currently calls this — reqres.in began requiring an
+     * x-api-key header on every request, so AuthenticationTest,
+     * SchemaValidationTest, PaginationFilteringTest, and
+     * ErrorHandlingTest#testBadRequestMissingField/testMalformedRequestBody
+     * now simulate the same contract via mockServer.stubReqResLogin() /
+     * stubReqResSingleUser() / stubReqResUsersPage() instead. Kept here in
+     * case a future API key is configured for opt-in live testing.
+     */
     protected static String authBaseUrl;
 
     /** Convenience field: base URL of the WireMock mock server. */
