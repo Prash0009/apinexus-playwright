@@ -42,8 +42,10 @@ into **Eclipse** as a Maven project.
 17. [Troubleshooting](#17-troubleshooting)
 
 See also: [TEST_CASES.md](TEST_CASES.md) for a full step-by-step specification
-of all 61 test cases, and [DEPLOYMENT.md](DEPLOYMENT.md) for deploying
-WireMock stubs to the cloud.
+of all 61 test cases, [DEPLOYMENT.md](DEPLOYMENT.md) for deploying WireMock
+stubs to the cloud, and [INTERVIEW_QUESTIONS.md](INTERVIEW_QUESTIONS.md) for
+a project-based interview question bank (92 Q&A pairs across architecture,
+Playwright, WireMock, TestNG, schema validation, CI/CD, and design patterns).
 
 ---
 
