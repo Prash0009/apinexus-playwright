@@ -37,7 +37,13 @@ into **Eclipse** as a Maven project.
 12. [How to Run Tests](#12-how-to-run-tests)
 13. [Adding New Tests](#13-adding-new-tests)
 14. [API Scenarios Coverage Map](#14-api-scenarios-coverage-map)
-15. [Troubleshooting](#15-troubleshooting)
+15. [Detailed Reporting (ExtentReports)](#15-detailed-reporting-extentreports)
+16. [Continuous Integration (GitHub Actions)](#16-continuous-integration-github-actions)
+17. [Troubleshooting](#17-troubleshooting)
+
+See also: [TEST_CASES.md](TEST_CASES.md) for a full step-by-step specification
+of all 61 test cases, and [DEPLOYMENT.md](DEPLOYMENT.md) for deploying
+WireMock stubs to the cloud.
 
 ---
 
@@ -893,11 +899,22 @@ mvn test -Dgroups=performance -Dperformance.max.response.time.ms=5000
 ```
 
 ### View test reports
-After `mvn test`, open:
+
+ApiNexus produces **three** reports from a single `mvn test` run:
+
+| Report | Location | What it shows |
+|---|---|---|
+| **ExtentReports HTML** (detailed) | `reports/ApiNexus-Test-Report-<timestamp>.html` | One page per test with the full request/response/assertion trail, color-coded by pass/fail/skip, filterable by suite/category. Open directly in any browser — no server needed. |
+| **Surefire raw XML/TXT** | `target/surefire-reports/` | Machine-readable JUnit-style XML, consumed by CI tools and the GitHub Actions workflow summary. |
+| **Surefire classic HTML** | `target/site/surefire-report.html` | Generate with `mvn surefire-report:report` — simple navigable pass/fail table. |
+
+Open the ExtentReports file for the most detailed view:
+```bash
+open reports/ApiNexus-Test-Report-*.html   # macOS
+xdg-open reports/ApiNexus-Test-Report-*.html  # Linux
 ```
-target/surefire-reports/index.html
-```
-This is the TestNG HTML report with pass/fail counts, duration, and stack traces.
+
+See [Detailed Reporting](#16-detailed-reporting-extentreports) below for how this is built.
 
 ### Tail the live log during a run
 ```bash
@@ -991,7 +1008,109 @@ and call it from `@BeforeClass`.
 
 ---
 
-## 15. Troubleshooting
+## 15. Detailed Reporting (ExtentReports)
+
+Every `mvn test` run automatically produces a self-contained, interactive
+HTML report under `reports/ApiNexus-Test-Report-<timestamp>.html` — no
+external CLI tool (unlike Allure) is required to generate or view it.
+
+### How it works
+
+```
+testng.xml registers ExtentTestListener
+        │
+        ├── onTestStart   → creates an ExtentTest node (tagged with
+        │                   group + test class), per thread via ThreadLocal
+        │
+        ├── (test runs)   → ApiLogger / ResponseValidator write normal
+        │                   SLF4J log lines as usual; logback-test.xml
+        │                   also forwards every "com.apinexus" log line to
+        │                   ExtentLogAppender, which appends it to the
+        │                   CURRENTLY RUNNING test's report node
+        │
+        ├── onTestSuccess → marks the node PASS (green)
+        ├── onTestFailure → marks the node FAIL (red) + full stack trace
+        ├── onTestSkipped → marks the node SKIP (orange) + reason
+        │
+        └── onFinish      → flush() writes the HTML file to reports/
+```
+
+The result: opening any test's node in the report shows the **exact same
+request/response/assertion detail** that appears in the console and in
+`logs/apinexus-test.log` — just organised per test, filterable, and
+color-coded, instead of one long chronological file.
+
+### Report features
+
+- **Dashboard** — pass/fail/skip counts, pie chart, total duration
+- **Category filter** — filter by TestNG group (`crud`, `auth`, `mock`, ...)
+- **Author filter** — filter by test class name
+- **Per-test timeline** — every `ApiLogger` line (▶ REQUEST, ◀ RESPONSE,
+  ✔ PASS, STEP n) shown in order, with timestamps
+- **Failure detail** — full exception message and stack trace, collapsible
+- **System info panel** — Java version, OS, mock mode, generation timestamp
+
+### Key classes
+
+| File | Role |
+|---|---|
+| `src/test/java/com/apinexus/report/ExtentReportManager.java` | Singleton owning the `ExtentReports` instance; `ThreadLocal<ExtentTest>` tracks "current test per thread" (needed because `data-provider-thread-count=3` runs some data-driven rows concurrently) |
+| `src/test/java/com/apinexus/report/ExtentTestListener.java` | `ITestListener` implementation registered in `testng.xml`; drives the manager on every test lifecycle event |
+| `src/test/java/com/apinexus/report/ExtentLogAppender.java` | Custom Logback appender; forwards every `com.apinexus.*` log event into the currently running test's report node |
+
+### Generating the classic Surefire HTML report too
+
+```bash
+mvn surefire-report:report
+open target/site/surefire-report.html
+```
+
+---
+
+## 16. Continuous Integration (GitHub Actions)
+
+A workflow at `.github/workflows/api-tests.yml` runs the full suite
+automatically.
+
+### Triggers
+
+| Trigger | Behaviour |
+|---|---|
+| Push to `main` | Runs the entire suite |
+| Pull request targeting `main` | Runs the entire suite |
+| Manual (`workflow_dispatch`) | Optionally restrict to one group via the `groups` input (e.g. `mock`, `crud`) |
+
+### What the workflow does
+
+1. Checks out the code
+2. Sets up JDK 11 (Temurin) with Maven dependency caching
+3. Runs `mvn test` (env var `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` skips
+   downloading browser binaries Playwright never actually uses for API testing)
+4. Uploads three artifacts regardless of pass/fail (`if: always()`):
+   - `surefire-reports` — raw XML/TXT results
+   - `extent-html-report` — the detailed ExtentReports HTML file
+   - `test-logs` — the full `logs/apinexus-test.log`
+5. Writes a Markdown table of pass/fail/error/skip counts per test class
+   directly into the GitHub Actions run's **Job Summary** tab — visible
+   without downloading anything
+6. Fails the job explicitly if any test failed, so branch protection and PR
+   checks behave correctly
+
+### Running it manually with a specific group
+
+1. Go to the repo's **Actions** tab → **ApiNexus API Test Suite** → **Run workflow**
+2. Enter a group name in the `groups` input (e.g. `auth`) or leave as `all`
+3. Click **Run workflow**
+
+### Downloading the detailed report from a CI run
+
+1. Open the workflow run in the **Actions** tab
+2. Scroll to **Artifacts** at the bottom of the run summary
+3. Download `extent-html-report` and open the `.html` file in any browser
+
+---
+
+## 17. Troubleshooting
 
 ### `Address already in use` on port 8089
 Another process is using port 8089. Change `mock.server.port` in

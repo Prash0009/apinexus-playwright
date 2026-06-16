@@ -46,6 +46,7 @@
         <logback.version>1.5.6</logback.version>
         <commons-io.version>2.16.1</commons-io.version>
         <maven-surefire.version>3.2.5</maven-surefire.version>
+        <extentreports.version>5.1.1</extentreports.version>
     </properties>
 
     <dependencies>
@@ -134,6 +135,23 @@
             <version>${commons-io.version}</version>
         </dependency>
 
+        <!-- ── 9. ExtentReports ─────────────────────────────────────────────
+             Generates a self-contained, interactive HTML test report after
+             every run (no external CLI tool required, unlike Allure).
+             A custom TestNG listener (ExtentTestListener) creates one report
+             node per test method; a custom Logback appender (ExtentLogAppender)
+             streams every ApiLogger line (requests, responses, assertions,
+             steps) into that node, so the HTML report shows the same level of
+             detail as the console/log file — but organised per test and
+             color-coded by pass/fail/skip.
+        ──────────────────────────────────────────────────────────────────── -->
+        <dependency>
+            <groupId>com.aventstack</groupId>
+            <artifactId>extentreports</artifactId>
+            <version>${extentreports.version}</version>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <build>
@@ -166,6 +184,18 @@
                     <source>11</source>
                     <target>11</target>
                 </configuration>
+            </plugin>
+
+            <!-- ── Maven Surefire Report — converts XML results into a classic
+                 navigable HTML report (target/site/surefire-report.html).
+                 Run explicitly with: mvn surefire-report:report
+                 This is a second, simpler report alongside the ExtentReports
+                 HTML report generated automatically by ExtentTestListener.
+            ──────────────────────────────────────────────────────────────── -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-report-plugin</artifactId>
+                <version>3.2.5</version>
             </plugin>
 
         </plugins>

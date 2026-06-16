@@ -18,6 +18,18 @@
        data-provider-thread-count="3">
 
     <!--
+        LISTENERS
+        ExtentTestListener hooks into every test start/pass/fail/skip event
+        and drives ExtentReportManager to build the detailed HTML report
+        under reports/. No annotations or imports are needed in the test
+        classes themselves — TestNG instantiates and calls this listener
+        automatically because it is registered here.
+    -->
+    <listeners>
+        <listener class-name="com.apinexus.report.ExtentTestListener"/>
+    </listeners>
+
+    <!--
         ── MOCK SERVER TESTS ────────────────────────────────────────────────
         Run the mock server tests FIRST so a live WireMock instance is
         validated before real-network tests start.

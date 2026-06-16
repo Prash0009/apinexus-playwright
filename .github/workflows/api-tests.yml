@@ -1,0 +1,179 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# api-tests.yml — GitHub Actions workflow that runs the ApiNexus test suite.
+#
+# WHAT THIS WORKFLOW DOES
+# ────────────────────────
+#   1. Checks out the repository
+#   2. Sets up Java 11 (Temurin distribution) with Maven dependency caching
+#   3. Runs the TestNG suite via `mvn test` (all groups, or a chosen subset
+#      when triggered manually)
+#   4. Uploads three sets of artifacts so results survive after the run ends:
+#        - target/surefire-reports/   (raw TestNG/JUnit XML + .txt summaries)
+#        - reports/                   (ExtentReports detailed HTML report)
+#        - logs/                      (full request/response log file)
+#   5. Writes a pass/fail/skip summary directly into the GitHub Actions run
+#      page (the "Job Summary" tab) by parsing the Surefire XML — so you see
+#      the result without downloading anything.
+#
+# WHEN IT RUNS
+# ────────────
+#   • Every push to main
+#   • Every pull request targeting main
+#   • Manually, any time, via the "Run workflow" button (workflow_dispatch),
+#     with an optional input to run only a specific test group
+#
+# PLAYWRIGHT BROWSER DOWNLOAD
+# ────────────────────────────
+# ApiNexus only uses Playwright's HTTP client (APIRequestContext), never an
+# actual browser. PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 stops Playwright from
+# downloading Chromium/Firefox/WebKit binaries, which speeds up the run and
+# avoids failures if the binary CDN is flaky.
+# ═══════════════════════════════════════════════════════════════════════════
+
+name: ApiNexus API Test Suite
+
+on:
+  # Run automatically whenever main is updated.
+  push:
+    branches: [ main ]
+
+  # Run automatically on every pull request targeting main.
+  pull_request:
+    branches: [ main ]
+
+  # Allow manually triggering the workflow from the GitHub Actions tab,
+  # optionally restricting the run to a single TestNG group.
+  workflow_dispatch:
+    inputs:
+      groups:
+        description: >
+          Comma-separated TestNG group(s) to run.
+          Leave as "all" to run the entire suite.
+          Valid values: crud, auth, schema, errors, pagination, mock,
+          performance, chaining, upload
+        required: false
+        default: "all"
+        type: string
+
+jobs:
+  run-tests:
+    name: Run API Test Suite
+    runs-on: ubuntu-latest
+
+    # Cap the whole job so a hung test (e.g. a network call that never
+    # times out) cannot block the runner indefinitely.
+    timeout-minutes: 20
+
+    steps:
+      # ── 1. Checkout the repository ──────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── 2. Set up Java 11 with built-in Maven dependency caching ────────
+      # setup-java's cache: maven option automatically caches ~/.m2/repository
+      # keyed on pom.xml's hash, so dependency downloads are skipped on
+      # unchanged subsequent runs — big speed-up for repeat CI runs.
+      - name: Set up JDK 11 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+          cache: maven
+
+      # ── 3. Run the test suite ───────────────────────────────────────────
+      # If the workflow was triggered manually with a specific group,
+      # pass -Dgroups=<value> to Surefire; otherwise run everything defined
+      # in testng.xml. `continue-on-error: true` lets later steps (uploading
+      # artifacts and writing the summary) run EVEN IF tests fail — we want
+      # the failure visible in the report, not just a red X with no detail.
+      - name: Run mvn test
+        id: run_tests
+        continue-on-error: true
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: |
+          if [ "${{ github.event.inputs.groups }}" != "" ] && [ "${{ github.event.inputs.groups }}" != "all" ]; then
+            echo "Running only group(s): ${{ github.event.inputs.groups }}"
+            mvn -B test -Dgroups="${{ github.event.inputs.groups }}"
+          else
+            echo "Running the full ApiNexus suite (all groups)"
+            mvn -B test
+          fi
+
+      # ── 4. Upload the raw Surefire results ──────────────────────────────
+      # if: always() ensures this runs even when the test step above failed,
+      # so you always get the reports for a failing run, not just green ones.
+      - name: Upload Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/
+          retention-days: 30
+
+      # ── 5. Upload the detailed ExtentReports HTML report ────────────────
+      - name: Upload ExtentReports HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extent-html-report
+          path: reports/
+          retention-days: 30
+
+      # ── 6. Upload the full request/response log file ────────────────────
+      - name: Upload log files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: logs/
+          retention-days: 30
+
+      # ── 7. Write a human-readable summary into the GitHub Actions UI ────
+      # $GITHUB_STEP_SUMMARY is a special file GitHub renders as Markdown
+      # directly on the workflow run page — no artifact download needed to
+      # see the headline numbers.
+      - name: Publish test summary
+        if: always()
+        run: |
+          echo "## ApiNexus Test Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Test Class | Tests | Failures | Errors | Skipped |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
+
+          total_tests=0
+          total_failures=0
+          total_errors=0
+          total_skipped=0
+
+          for f in target/surefire-reports/TEST-*.xml; do
+            [ -e "$f" ] || continue
+            classname=$(basename "$f" | sed 's/^TEST-//;s/\.xml$//')
+            tests=$(grep -o 'tests="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*')
+            failures=$(grep -o 'failures="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*')
+            errors=$(grep -o 'errors="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*')
+            skipped=$(grep -o 'skipped="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*')
+
+            echo "| $classname | $tests | $failures | $errors | $skipped |" >> "$GITHUB_STEP_SUMMARY"
+
+            total_tests=$((total_tests + ${tests:-0}))
+            total_failures=$((total_failures + ${failures:-0}))
+            total_errors=$((total_errors + ${errors:-0}))
+            total_skipped=$((total_skipped + ${skipped:-0}))
+          done
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Total: $total_tests tests, $total_failures failures, $total_errors errors, $total_skipped skipped**" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Full detail: download the \`extent-html-report\` artifact and open the HTML file in any browser." >> "$GITHUB_STEP_SUMMARY"
+
+      # ── 8. Fail the job if any test failed ───────────────────────────────
+      # Because step 3 used continue-on-error, the job would otherwise show
+      # green even with failing tests. This step explicitly fails the job
+      # afterwards so PR checks and branch protection work correctly, while
+      # still letting artifacts/summary be generated above.
+      - name: Fail job if tests failed
+        if: steps.run_tests.outcome == 'failure'
+        run: |
+          echo "Test step failed — see the Surefire reports / ExtentReports artifacts above for details."
+          exit 1
