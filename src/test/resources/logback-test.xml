@@ -56,14 +56,14 @@
     </appender>
 
     <!--
-        EXTENT REPORT APPENDER
-        Forwards every log line from com.apinexus.* into the HTML report,
-        attached to whichever test is currently running on that thread.
-        See ExtentLogAppender.java for the full explanation.
+        REPORT APPENDER
+        Forwards every log line from com.apinexus.* into the custom HTML
+        dashboard, attached to whichever test is currently running on that
+        thread. See ReportLogAppender.java for the full explanation.
         This is what makes the HTML report show request/response/assertion
         detail per test instead of just a pass/fail summary.
     -->
-    <appender name="EXTENT" class="com.apinexus.report.ExtentLogAppender"/>
+    <appender name="REPORT" class="com.apinexus.report.ReportLogAppender"/>
 
     <!--
         ROOT LOGGER — catches every log statement in the application.
@@ -85,13 +85,13 @@
 
     <!--
         Our test code logs at DEBUG (the most granular level) and also feeds
-        the EXTENT appender, in addition to the root logger's CONSOLE + FILE.
+        the REPORT appender, in addition to the root logger's CONSOLE + FILE.
         additivity="true" (the default) means both this appender AND the
         root logger's appenders receive every event — nothing is lost from
         the console/file output by adding the HTML report.
     -->
     <logger name="com.apinexus" level="DEBUG">
-        <appender-ref ref="EXTENT"/>
+        <appender-ref ref="REPORT"/>
     </logger>
 
 </configuration>

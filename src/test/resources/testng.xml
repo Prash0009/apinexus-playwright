@@ -19,14 +19,14 @@
 
     <!--
         LISTENERS
-        ExtentTestListener hooks into every test start/pass/fail/skip event
-        and drives ExtentReportManager to build the detailed HTML report
-        under reports/. No annotations or imports are needed in the test
-        classes themselves — TestNG instantiates and calls this listener
-        automatically because it is registered here.
+        CustomReportListener hooks into every test start/pass/fail/skip event
+        and builds the Cluecumber-style HTML dashboard under reports/. No
+        annotations or imports are needed in the test classes themselves —
+        TestNG instantiates and calls this listener automatically because it
+        is registered here.
     -->
     <listeners>
-        <listener class-name="com.apinexus.report.ExtentTestListener"/>
+        <listener class-name="com.apinexus.report.CustomReportListener"/>
     </listeners>
 
     <!--

@@ -37,7 +37,7 @@ into **Eclipse** as a Maven project.
 12. [How to Run Tests](#12-how-to-run-tests)
 13. [Adding New Tests](#13-adding-new-tests)
 14. [API Scenarios Coverage Map](#14-api-scenarios-coverage-map)
-15. [Detailed Reporting (ExtentReports)](#15-detailed-reporting-extentreports)
+15. [Detailed Reporting (HTML Dashboard)](#15-detailed-reporting-html-dashboard)
 16. [Continuous Integration (GitHub Actions)](#16-continuous-integration-github-actions)
 17. [Troubleshooting](#17-troubleshooting)
 
@@ -904,17 +904,17 @@ ApiNexus produces **three** reports from a single `mvn test` run:
 
 | Report | Location | What it shows |
 |---|---|---|
-| **ExtentReports HTML** (detailed) | `reports/ApiNexus-Test-Report-<timestamp>.html` | One page per test with the full request/response/assertion trail, color-coded by pass/fail/skip, filterable by suite/category. Open directly in any browser — no server needed. |
+| **HTML Dashboard** (detailed) | `reports/ApiNexus-Test-Report-<timestamp>.html` | Cluecumber-style dashboard: summary stat cards, a donut chart, filter chips by suite, live search, and a collapsible per-class/per-test accordion showing the full request/response/assertion trail. Single self-contained file, open directly in any browser — no server needed. |
 | **Surefire raw XML/TXT** | `target/surefire-reports/` | Machine-readable JUnit-style XML, consumed by CI tools and the GitHub Actions workflow summary. |
 | **Surefire classic HTML** | `target/site/surefire-report.html` | Generate with `mvn surefire-report:report` — simple navigable pass/fail table. |
 
-Open the ExtentReports file for the most detailed view:
+Open the HTML dashboard for the most detailed view:
 ```bash
 open reports/ApiNexus-Test-Report-*.html   # macOS
 xdg-open reports/ApiNexus-Test-Report-*.html  # Linux
 ```
 
-See [Detailed Reporting](#16-detailed-reporting-extentreports) below for how this is built.
+See [Detailed Reporting](#15-detailed-reporting-html-dashboard) below for how this is built.
 
 ### Tail the live log during a run
 ```bash
@@ -1008,55 +1008,64 @@ and call it from `@BeforeClass`.
 
 ---
 
-## 15. Detailed Reporting (ExtentReports)
+## 15. Detailed Reporting (HTML Dashboard)
 
-Every `mvn test` run automatically produces a self-contained, interactive
-HTML report under `reports/ApiNexus-Test-Report-<timestamp>.html` — no
-external CLI tool (unlike Allure) is required to generate or view it.
+Every `mvn test` run automatically produces a self-contained HTML dashboard
+under `reports/ApiNexus-Test-Report-<timestamp>.html` — no external CLI tool
+or third-party reporting library is required to generate or view it. The
+look is inspired by Cluecumber's clean card/donut-chart layout, but it is a
+small custom renderer built specifically for this project — no Cucumber
+dependency anywhere.
 
 ### How it works
 
 ```
-testng.xml registers ExtentTestListener
+testng.xml registers CustomReportListener
         │
-        ├── onTestStart   → creates an ExtentTest node (tagged with
-        │                   group + test class), per thread via ThreadLocal
+        ├── onTestStart   → creates a TestResultModel (tagged with group +
+        │                   test class), tracked per thread via ThreadLocal
         │
         ├── (test runs)   → ApiLogger / ResponseValidator write normal
         │                   SLF4J log lines as usual; logback-test.xml
         │                   also forwards every "com.apinexus" log line to
-        │                   ExtentLogAppender, which appends it to the
-        │                   CURRENTLY RUNNING test's report node
+        │                   ReportLogAppender, which appends it to the
+        │                   CURRENTLY RUNNING test's TestResultModel
         │
-        ├── onTestSuccess → marks the node PASS (green)
-        ├── onTestFailure → marks the node FAIL (red) + full stack trace
-        ├── onTestSkipped → marks the node SKIP (orange) + reason
+        ├── onTestSuccess → marks the model PASS, records duration
+        ├── onTestFailure → marks the model FAIL + failure message + stack trace
+        ├── onTestSkipped → marks the model SKIP + reason
         │
-        └── onFinish      → flush() writes the HTML file to reports/
+        └── onFinish      → HtmlReportRenderer.render() builds the single
+                             HTML file (inline CSS + vanilla JS, no CDN)
 ```
 
-The result: opening any test's node in the report shows the **exact same
+The result: expanding any test row in the report shows the **exact same
 request/response/assertion detail** that appears in the console and in
 `logs/apinexus-test.log` — just organised per test, filterable, and
 color-coded, instead of one long chronological file.
 
 ### Report features
 
-- **Dashboard** — pass/fail/skip counts, pie chart, total duration
-- **Category filter** — filter by TestNG group (`crud`, `auth`, `mock`, ...)
-- **Author filter** — filter by test class name
-- **Per-test timeline** — every `ApiLogger` line (▶ REQUEST, ◀ RESPONSE,
-  ✔ PASS, STEP n) shown in order, with timestamps
-- **Failure detail** — full exception message and stack trace, collapsible
-- **System info panel** — Java version, OS, mock mode, generation timestamp
+- **Summary cards** — Total / Passed / Failed / Skipped counts
+- **CSS-only donut chart** — pass/fail/skip split, no JS charting library
+- **Filter chips** — filter by TestNG group (`crud`, `auth`, `mock`, ...)
+- **Live search** — filter rows by test name/description as you type
+- **Collapsible accordion** — one card per test class, one row per test
+  method (native `<details>`/`<summary>` — no JS needed for expand/collapse)
+- **Per-test log panel** — every `ApiLogger` line (▶ REQUEST, ◀ RESPONSE,
+  ✔ PASS, STEP n) shown in order, monospace, dark background
+- **Failure detail** — failure message inline, full stack trace in a
+  collapsible sub-panel
 
 ### Key classes
 
 | File | Role |
 |---|---|
-| `src/test/java/com/apinexus/report/ExtentReportManager.java` | Singleton owning the `ExtentReports` instance; `ThreadLocal<ExtentTest>` tracks "current test per thread" (needed because `data-provider-thread-count=3` runs some data-driven rows concurrently) |
-| `src/test/java/com/apinexus/report/ExtentTestListener.java` | `ITestListener` implementation registered in `testng.xml`; drives the manager on every test lifecycle event |
-| `src/test/java/com/apinexus/report/ExtentLogAppender.java` | Custom Logback appender; forwards every `com.apinexus.*` log event into the currently running test's report node |
+| `src/test/java/com/apinexus/report/TestResultModel.java` | POJO holding one test's outcome: status, duration, description, captured log lines, failure message/stack trace |
+| `src/test/java/com/apinexus/report/SuiteReportModel.java` | Holds every `TestResultModel` for the run plus aggregate pass/fail/skip counts |
+| `src/test/java/com/apinexus/report/CustomReportListener.java` | `ITestListener` registered in `testng.xml`; builds the model on every test lifecycle event; `ThreadLocal<TestResultModel>` tracks "current test per thread" (needed because `data-provider-thread-count=3` runs some data-driven rows concurrently) |
+| `src/test/java/com/apinexus/report/ReportLogAppender.java` | Custom Logback appender; forwards every `com.apinexus.*` log event into the currently running test's model |
+| `src/test/java/com/apinexus/report/HtmlReportRenderer.java` | Renders the `SuiteReportModel` into the final single HTML file (inline CSS/JS, Cluecumber-style layout) |
 
 ### Generating the classic Surefire HTML report too
 
@@ -1088,7 +1097,7 @@ automatically.
    downloading browser binaries Playwright never actually uses for API testing)
 4. Uploads three artifacts regardless of pass/fail (`if: always()`):
    - `surefire-reports` — raw XML/TXT results
-   - `extent-html-report` — the detailed ExtentReports HTML file
+   - `html-test-report` — the detailed Cluecumber-style HTML dashboard
    - `test-logs` — the full `logs/apinexus-test.log`
 5. Writes a Markdown table of pass/fail/error/skip counts per test class
    directly into the GitHub Actions run's **Job Summary** tab — visible
@@ -1106,7 +1115,7 @@ automatically.
 
 1. Open the workflow run in the **Actions** tab
 2. Scroll to **Artifacts** at the bottom of the run summary
-3. Download `extent-html-report` and open the `.html` file in any browser
+3. Download `html-test-report` and open the `.html` file in any browser
 
 ---
 

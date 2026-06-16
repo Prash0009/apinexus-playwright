@@ -9,7 +9,7 @@
 #      when triggered manually)
 #   4. Uploads three sets of artifacts so results survive after the run ends:
 #        - target/surefire-reports/   (raw TestNG/JUnit XML + .txt summaries)
-#        - reports/                   (ExtentReports detailed HTML report)
+#        - reports/                   (custom Cluecumber-style HTML dashboard)
 #        - logs/                      (full request/response log file)
 #   5. Writes a pass/fail/skip summary directly into the GitHub Actions run
 #      page (the "Job Summary" tab) by parsing the Surefire XML — so you see
@@ -111,12 +111,12 @@ jobs:
           path: target/surefire-reports/
           retention-days: 30
 
-      # ── 5. Upload the detailed ExtentReports HTML report ────────────────
-      - name: Upload ExtentReports HTML report
+      # ── 5. Upload the detailed HTML dashboard ────────────────────────────
+      - name: Upload HTML test report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: extent-html-report
+          name: html-test-report
           path: reports/
           retention-days: 30
 
@@ -165,7 +165,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Total: $total_tests tests, $total_failures failures, $total_errors errors, $total_skipped skipped**" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Full detail: download the \`extent-html-report\` artifact and open the HTML file in any browser." >> "$GITHUB_STEP_SUMMARY"
+          echo "Full detail: download the \`html-test-report\` artifact and open the HTML file in any browser." >> "$GITHUB_STEP_SUMMARY"
 
       # ── 8. Fail the job if any test failed ───────────────────────────────
       # Because step 3 used continue-on-error, the job would otherwise show
@@ -175,5 +175,5 @@ jobs:
       - name: Fail job if tests failed
         if: steps.run_tests.outcome == 'failure'
         run: |
-          echo "Test step failed — see the Surefire reports / ExtentReports artifacts above for details."
+          echo "Test step failed — see the Surefire reports / HTML test report artifacts above for details."
           exit 1
